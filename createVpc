@@ -2,7 +2,7 @@
 
 set -eo pipefail
 
-createVpc=".vpc"
+# createVpc=".vpc"
 
 read -p "enter --create for creatin vpc or --delete for deleteing existing vpc: " createordelete #  => input()
 write_vpc_to_file() {
