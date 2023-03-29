@@ -13,7 +13,7 @@ write_vpc_to_file() {
     echo "Something went wrong with the last vpc creation and not all of the required information is available. \
         You need to delete and re-create the last VPC before creating a new one." && exit
 
-if [[ $1 == "--create" ]]; then
+if [[ $1 == "create" ]]; then
     [[ -z $2 ]] && echo "ARG 2 (after --create) needs to be the availability zone you want the VPC in" && exit
     AvailableZones=$2
 
