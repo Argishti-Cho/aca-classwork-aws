@@ -167,7 +167,7 @@ if [[ $1 == "create" ]]; then
     # Add a tag to the default route table
     AWS_DEFAULT_ROUTE_TABLE_ID=$(aws ec2 describe-route-tables \
         --filters "Name=vpc-id,Values=$AWS_VPC_ID" \
-        --query 'RouteTables[?Associations[0].Main != `false`].RouteTableId' \
+        --query 'RouteTables[?Associations[0].Main != 'false'].RouteTableId' \
         --output text)
     AWS_VPC="$AWS_VPC $AWS_DEFAULT_ROUTE_TABLE_ID"
 
