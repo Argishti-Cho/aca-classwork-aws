@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #pipefail
-set -ex 
+set -ex pipefail
 
 createVpc=".vpcs"
 
@@ -14,14 +14,15 @@ write_vpc_to_file() {
         You need to delete and re-create the last VPC before creating a new one." && exit
 
 if [[ $1 == "create" ]]; then
-    [[ -z $2 ]] && echo "ARG 2 (after create) needs to be the availability zone you want the VPC in eg. us-east-1" && exit
+    [[ -z $2 ]] && echo "ARG 2 (after create) needs to be the availability zone you want the VPC in: ex. us-east-1" && exit
     AZ=$2
 
     trap write_vpc_to_file EXIT
 
+    #--cidr-block 72.31.0.0/16	or  --cidr-block 10.0.0.0/16
     #Create VPC -1
     AWS_VPC_ID=$(aws ec2 create-vpc \
-                    --cidr-block 10.0.0.0/16 \
+                    --cidr-block 10.0.0.0/16 \ 
                     --query 'Vpc.{VpcId:VpcId}' \
                     --output text)
     AWS_VPC="$AWS_VPC_ID"
