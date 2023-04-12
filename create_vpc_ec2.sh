@@ -175,10 +175,10 @@ create_vpc() {
     sleep 2
 
     CURRENT_TIME=$(date '+%Y-%m-%d_%H-%M-%S')
-    KEY_PAIR_ID=$(aws ec2 create-key-pair \
+    aws ec2 create-key-pair \
         --key-name "key-pair-${CURRENT_TIME}" \
         --query 'KeyMaterial' \
-        --output text > aca-key-pair.pem)
+        --output text > aca-key-pair.pem
     AWS_VPC="$AWS_VPC $KEY_PAIR_ID"
     echo "Created Key Pair is  $KEY_PAIR_ID"
     sleep 2
@@ -207,7 +207,7 @@ create_vpc() {
     INSTANCE_ID=$(aws ec2 run-instances \
         --image-id ami-0c55b159cbfafe1f0 \
         --count 1 --instance-type t2.micro \
-        --key-name $KEY_PAIR_ID \
+        --key-name key-pair-${CURRENT_TIME} \
         --security-group-ids $AWS_CUSTOM_SECURITY_GROUP_ID \
         --subnet-id $AWS_SUBNET_PUBLIC_ID \
         --associate-public-ip-address \
