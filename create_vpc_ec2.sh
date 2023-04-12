@@ -1,30 +1,24 @@
-#!/bin/bash
+#!/bin/bash -ex
 
-#pipefail
-set -ex 
-
-createVpc=".vpcs"
+createVpc="vpc_ids"
 
 write_vpc_to_file() {
     echo $AWS_VPC >> $createVpc
 }
-
-[[ ! -z $(tail -n 1 $createVpc) ]] && [[ $(tail -n 1 $createVpc | tr -cd ' \t' | wc -c ) != 8 ]] && 
-    echo "Something went wrong with the last vpc creation and not all of the required information is available. \
-        You need to delete and re-create the last VPC before creating a new one." && exit
-
-if [[ $1 == "create" ]]; then
-    [[ -z $2 ]] && echo "ARG 2 (after create) needs to be the availability zone you want the VPC in eg. us-east-1" && exit
-    AZ=$2
+create_vpc() {
 
     trap write_vpc_to_file EXIT
 
+    AWS_REGION="US-east-1"
+    AWS_VPC="$AWS_REGION"
     #Create VPC -1
     AWS_VPC_ID=$(aws ec2 create-vpc \
                     --cidr-block 10.0.0.0/16 \
                     --query 'Vpc.{VpcId:VpcId}' \
                     --output text)
-    AWS_VPC="$AWS_VPC_ID"
+    AWS_VPC="$AWS_VPC $AWS_VPC_ID"
+    echo "Created VPC ID $AWS_VPC_ID"
+    sleep 2
 
     #Enable DNS hostname for the VPC -2
     aws ec2 modify-vpc-attribute \
@@ -37,6 +31,8 @@ if [[ $1 == "create" ]]; then
         --availability-zone us-east-1a --query 'Subnet.{SubnetId:SubnetId}' \
         --output text)
     AWS_VPC="$AWS_VPC $AWS_SUBNET_PUBLIC_ID"
+    echo "Created Subnet public ID $AWS_SUBNET_PUBLIC_ID"
+    sleep 2
 
     # Enable Auto-assign Public IP on Public Subnet -4
     aws ec2 modify-subnet-attribute \
@@ -48,6 +44,8 @@ if [[ $1 == "create" ]]; then
         --query 'InternetGateway.{InternetGatewayId:InternetGatewayId}' \
         --output text)
     AWS_VPC="$AWS_VPC $AWS_INTERNET_GATEWAY_ID"
+    echo "Created internet gateway ID $AWS_VPC $AWS_INTERNET_GATEWAY_ID"
+    sleep 2
 
     # Attach Internet gateway to your VPC -6
     aws ec2 attach-internet-gateway \
@@ -60,6 +58,8 @@ if [[ $1 == "create" ]]; then
         --query 'RouteTable.{RouteTableId:RouteTableId}' \
         --output text)
     AWS_VPC="$AWS_VPC $AWS_CUSTOM_ROUTE_TABLE_ID"
+    echo "Created custom route table ID $AWS_CUSTOM_ROUTE_TABLE_ID"
+    sleep 2
 
     # Create route to Internet Gateway -8
     aws ec2 create-route \
@@ -73,6 +73,8 @@ if [[ $1 == "create" ]]; then
         --route-table-id $AWS_CUSTOM_ROUTE_TABLE_ID \
         --output text | head -1)
     AWS_VPC="$AWS_VPC $AWS_ROUTE_TABLE_ASSOID"
+    echo "Created custom route associated ID $AWS_ROUTE_TABLE_ASSOID"
+    sleep 2
 
     # Create a security group -10
     aws ec2 create-security-group \
@@ -86,6 +88,9 @@ if [[ $1 == "create" ]]; then
         --query 'SecurityGroups[?GroupName == `default`].GroupId' \
         --output text)
     AWS_VPC="$AWS_VPC $AWS_DEFAULT_SECURITY_GROUP_ID"
+    echo "Created AWS DEFAULT SECURITY GROUP ID $AWS_DEFAULT_SECURITY_GROUP_ID"
+    sleep 2
+
     AWS_CUSTOM_SECURITY_GROUP_ID=$(aws ec2 describe-security-groups \
         --filters "Name=vpc-id,Values=$AWS_VPC_ID" \
         --query 'SecurityGroups[?GroupName == `aca-vpc-security-group`].GroupId' \
@@ -148,7 +153,7 @@ if [[ $1 == "create" ]]; then
     # Add a tag to the VPC
     aws ec2 create-tags \
         --resources $AWS_VPC_ID \
-        --tags "Key=Name,Value=aca-vpc-security-group"
+        --tags "Key=Name,Value=aca-vpc-security-group-"
 
     # Add a tag to public subnet
     aws ec2 create-tags \
@@ -166,6 +171,17 @@ if [[ $1 == "create" ]]; then
         --query 'RouteTables[?Associations[0].Main != `false`].RouteTableId' \
         --output text)
     AWS_VPC="$AWS_VPC $AWS_DEFAULT_ROUTE_TABLE_ID"
+    echo "Created AWS DEFAULT ROUTE TABLE ID $AWS_DEFAULT_ROUTE_TABLE_ID"
+    sleep 2
+
+    CURRENT_TIME=$(date '+%Y-%m-%d_%H-%M-%S')
+    KEY_PAIR_ID=$(aws ec2 create-key-pair \
+        --key-name "key-pair-${CURRENT_TIME}" \
+        --query 'KeyMaterial' \
+        --output text > aca-key-pair.pem)
+    AWS_VPC="$AWS_VPC $KEY_PAIR_ID"
+    echo "Created Key Pair is  $KEY_PAIR_ID"
+    sleep 2
 
     # Add a tag to the default route table
     aws ec2 create-tags \
@@ -187,53 +203,32 @@ if [[ $1 == "create" ]]; then
         --resources $AWS_DEFAULT_SECURITY_GROUP_ID \
         --tags "Key=Name, Value=aca-vpc-security-group-default-security-group"
 
-elif [[ $1 == "delete" ]]; then
+    # Launch an EC2 instance
+    INSTANCE_ID=$(aws ec2 run-instances \
+        --image-id ami-0c55b159cbfafe1f0 \
+        --count 1 --instance-type t2.micro \
+        --key-name $KEY_PAIR_ID \
+        --security-group-ids $AWS_CUSTOM_SECURITY_GROUP_ID \
+        --subnet-id $AWS_SUBNET_PUBLIC_ID \
+        --associate-public-ip-address \
+        --query 'Instances[0].InstanceId' \
+        --region $AWS_REGION \
+        --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":8,"VolumeType":"gp2"}}]' \
+        --output text)
 
-    AWS_VPC=$(tail -n 1 $createVpc)
-    [[ -z $AWS_VPC ]] && echo "nothing to delete!" && exit
+    # Wait for the instance to start
+    aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
+    # Print the public IP address of the instance
+    PUBLIC_IP=$(aws ec2 describe-instances \
+    --instance-ids $INSTANCE_ID \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+    --output text)
 
-    AWS_VPC_ID=$(echo $AWS_VPC | cut -d ' ' -f1)
-    AWS_CUSTOM_SECURITY_GROUP_ID=$(echo $AWS_VPC | cut -d ' ' -f7)
-    AWS_INTERNET_GATEWAY_ID=$(echo $AWS_VPC | cut -d ' ' -f3)
-    AWS_ROUTE_TABLE_ASSOID=$(echo $AWS_VPC | cut -d ' ' -f5)
-    AWS_CUSTOM_ROUTE_TABLE_ID=$(echo $AWS_VPC | cut -d ' ' -f4)
-    AWS_SUBNET_PUBLIC_ID=$(echo $AWS_VPC | cut -d ' ' -f2)
+    echo "Instance created with public IP address: $PUBLIC_IP"
 
+    declare -g AWS_VPC="$AWS_VPC"    
 
-    # delete all -15
-    # Delete custom security group
-    aws ec2 delete-security-group \
-        --group-id $AWS_CUSTOM_SECURITY_GROUP_ID || true
+}
 
-    ## Delete internet gateway
-    aws ec2 detach-internet-gateway \
-        --internet-gateway-id $AWS_INTERNET_GATEWAY_ID \
-        --vpc-id $AWS_VPC_ID || true
-
-    aws ec2 delete-internet-gateway \
-        --internet-gateway-id $AWS_INTERNET_GATEWAY_ID || true
-
-    ## Delete the custom route table
-    aws ec2 disassociate-route-table \
-        --association-id $AWS_ROUTE_TABLE_ASSOID || true
-
-    aws ec2 delete-route-table \
-        --route-table-id $AWS_CUSTOM_ROUTE_TABLE_ID || true
-
-    ## Delete the public subnet
-    aws ec2 delete-subnet \
-        --subnet-id $AWS_SUBNET_PUBLIC_ID || true
-
-    ## Delete the vpc
-    aws ec2 delete-vpc \
-        --vpc-id $AWS_VPC_ID
-
-    sed -i  "/$AWS_VPC/d" $createVpc
-
-else
-    echo "please add arguments: create or delete…"
-    exit
-fi
-
-
+create_vpc
