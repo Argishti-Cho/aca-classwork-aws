@@ -176,13 +176,14 @@ create_vpc() {
 
     CURRENT_TIME=$(date '+%Y-%m-%d_%H-%M-%S')
     aws ec2 create-key-pair \
-        --key-name "key-pair-${CURRENT_TIME}" \
+        --key-name my-key-pair \
         --query 'KeyMaterial' \
         --output text > aca-key-pair.pem
     AWS_VPC="$AWS_VPC $KEY_PAIR_ID"
     echo "Created Key Pair is  $KEY_PAIR_ID"
     sleep 2
 
+    aws describe-key-pair --key-name my-key-pair
     # Add a tag to the default route table
     aws ec2 create-tags \
         --resources $AWS_DEFAULT_ROUTE_TABLE_ID \
@@ -207,7 +208,7 @@ create_vpc() {
     INSTANCE_ID=$(aws ec2 run-instances \
         --image-id ami-0c55b159cbfafe1f0 \
         --count 1 --instance-type t2.micro \
-        --key-name key-pair-${CURRENT_TIME} \
+        --key-name my-key-pair \
         --security-group-ids $AWS_CUSTOM_SECURITY_GROUP_ID \
         --subnet-id $AWS_SUBNET_PUBLIC_ID \
         --associate-public-ip-address \
