@@ -18,7 +18,7 @@ create_vpc() {
                     --output text)
     AWS_VPC="$AWS_VPC $AWS_VPC_ID"
     echo "Created VPC ID $AWS_VPC_ID"
-    sleep 2
+    # sleep 2
 
     #Enable DNS hostname for the VPC -2
     aws ec2 modify-vpc-attribute \
@@ -32,7 +32,7 @@ create_vpc() {
         --output text)
     AWS_VPC="$AWS_VPC $AWS_SUBNET_PUBLIC_ID"
     echo "Created Subnet public ID $AWS_SUBNET_PUBLIC_ID"
-    sleep 2
+    # sleep 2
 
     # Enable Auto-assign Public IP on Public Subnet -4
     aws ec2 modify-subnet-attribute \
@@ -45,7 +45,7 @@ create_vpc() {
         --output text)
     AWS_VPC="$AWS_VPC $AWS_INTERNET_GATEWAY_ID"
     echo "Created internet gateway ID $AWS_VPC $AWS_INTERNET_GATEWAY_ID"
-    sleep 2
+    # sleep 2
 
     # Attach Internet gateway to your VPC -6
     aws ec2 attach-internet-gateway \
@@ -59,7 +59,7 @@ create_vpc() {
         --output text)
     AWS_VPC="$AWS_VPC $AWS_CUSTOM_ROUTE_TABLE_ID"
     echo "Created custom route table ID $AWS_CUSTOM_ROUTE_TABLE_ID"
-    sleep 2
+    # sleep 2
 
     # Create route to Internet Gateway -8
     aws ec2 create-route \
@@ -74,7 +74,7 @@ create_vpc() {
         --output text | head -1)
     AWS_VPC="$AWS_VPC $AWS_ROUTE_TABLE_ASSOID"
     echo "Created custom route associated ID $AWS_ROUTE_TABLE_ASSOID"
-    sleep 2
+    # sleep 2
 
     # Create a security group -10
     aws ec2 create-security-group \
@@ -89,7 +89,7 @@ create_vpc() {
         --output text)
     AWS_VPC="$AWS_VPC $AWS_DEFAULT_SECURITY_GROUP_ID"
     echo "Created AWS DEFAULT SECURITY GROUP ID $AWS_DEFAULT_SECURITY_GROUP_ID"
-    sleep 2
+    # sleep 2
 
     AWS_CUSTOM_SECURITY_GROUP_ID=$(aws ec2 describe-security-groups \
         --filters "Name=vpc-id,Values=$AWS_VPC_ID" \
@@ -126,12 +126,12 @@ create_vpc() {
     aws ec2 authorize-security-group-ingress \
         --group-id $AWS_CUSTOM_SECURITY_GROUP_ID \
         --ip-permissions '[{
-            "IpProtocol": "tcp", 
-            "FromPort": 443, 
-            "ToPort": 443, 
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
             "IpRanges": [
                 {
-                    "CidrIp": "0.0.0.0/0", 
+                    "CidrIp": "0.0.0.0/0",
                     "Description": "Allow HTTPS"
                 }
             ]
@@ -172,49 +172,53 @@ create_vpc() {
         --output text)
     AWS_VPC="$AWS_VPC $AWS_DEFAULT_ROUTE_TABLE_ID"
     echo "Created AWS DEFAULT ROUTE TABLE ID $AWS_DEFAULT_ROUTE_TABLE_ID"
-    sleep 2
+    # sleep 2
 
     CURRENT_TIME=$(date '+%Y-%m-%d_%H-%M-%S')
     aws ec2 create-key-pair \
-        --key-name my-key-pair \
+        --key-name "key-pair-{$CURRENT_TIME}" \
         --query 'KeyMaterial' \
-        --output text > aca-key-pair.pem
+        --output text > test-key-pair.pem
     AWS_VPC="$AWS_VPC $KEY_PAIR_ID"
-    echo "Created Key Pair is  $KEY_PAIR_ID"
-    sleep 2
+    echo "Created Key Pair is  my-key-pair"
+    # sleep 2
 
     aws describe-key-pair --key-name my-key-pair
     # Add a tag to the default route table
     aws ec2 create-tags \
         --resources $AWS_DEFAULT_ROUTE_TABLE_ID \
-        --tags "Key=Name, Value=aca-vpc-security-group-default-route-table"
+        --tags "Key=Name, Value=test-vpc-security-group-default-route-table"
 
     # Add a tag to the public route table
     aws ec2 create-tags \
         --resources $AWS_CUSTOM_ROUTE_TABLE_ID \
-        --tags "Key=Name, Value=aca-vpc-security-group-public-route-table"
+        --tags "Key=Name, Value=test-vpc-security-group-public-route-table"
 
     # Add a tags to security groups
     aws ec2 create-tags \
         --resources $AWS_CUSTOM_SECURITY_GROUP_ID \
-        --tags "Key=Name, Value=aca-vpc-security-group-security-group"
+        --tags "Key=Name, Value=test-vpc-security-group-security-group"
 
     # Add a tag to default security group
     aws ec2 create-tags \
         --resources $AWS_DEFAULT_SECURITY_GROUP_ID \
-        --tags "Key=Name, Value=aca-vpc-security-group-default-security-group"
+        --tags "Key=Name, Value=test-vpc-security-group-default-security-group"
 
     # Launch an EC2 instance
     INSTANCE_ID=$(aws ec2 run-instances \
         --image-id ami-0c55b159cbfafe1f0 \
         --count 1 --instance-type t2.micro \
-        --key-name my-key-pair \
+        --key-name key-pair-{$CURRENT_TIME} \
         --security-group-ids $AWS_CUSTOM_SECURITY_GROUP_ID \
         --subnet-id $AWS_SUBNET_PUBLIC_ID \
         --associate-public-ip-address \
         --query 'Instances[0].InstanceId' \
         --region $AWS_REGION \
-        --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":8,"VolumeType":"gp2"}}]' \
+        --block-device-mappings '[{
+            "DeviceName":"/dev/xvda",
+            "Ebs":{"VolumeSize":8,
+            "VolumeType":"gp2"}
+            }]' \
         --output text)
 
     # Wait for the instance to start
@@ -228,7 +232,7 @@ create_vpc() {
 
     echo "Instance created with public IP address: $PUBLIC_IP"
 
-    declare -g AWS_VPC="$AWS_VPC"    
+    declare -g AWS_VPC="$AWS_VPC"
 
 }
 
